@@ -39,7 +39,7 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
         const rss = registeredRss[rssId]
         const rssServer = `${rss.protocol}//${rss.address}:${rss.port}`
 
-        const res = await axios.post(`${rssServer}/rss/requestMihoyo`, requestInfo, {
+        const res = await axios.post(`${rssServer}/api/rss/requestMihoyo`, requestInfo, {
             responseEncoding: 'utf-8',
             responseType: 'text'
         })
@@ -135,7 +135,7 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
             }
 
             try {
-                await axios.post(`${protocol ?? 'http:'}//${address}:${port}/rss/ping`)
+                await axios.post(`${protocol ?? 'http:'}//${address}:${port}/api/rss/ping`)
             } catch (e) {
                 console.error(e)
                 return await apiResponse(res, ApiReturnCode.failure, '无法连接')
@@ -194,7 +194,7 @@ let serverRssId: string | undefined = undefined
 if ((config.serverType == 'rss' || config.serverType == 'hybrid') && config.rssAddress) {
     const address = new url.URL(config.rssAddress)
     async function registerRssServer(rmsServer: string, key: string) {
-        const res = await axios.post(`${rmsServer}/rms/registerRss`, {
+        const res = await axios.post(`${rmsServer}/api/rms/registerRss`, {
             protocol: address.protocol,
             address: address.hostname,
             port: parseInt(address.port),
@@ -233,7 +233,7 @@ if ((config.serverType == 'rss' || config.serverType == 'hybrid') && config.rssA
     }
     setInterval(async () => {
         config.rssTargetRmsServers.forEach(async (rmsServer, i) => {
-            const heartbeat = await axios.post(`${rmsServer}/rms/heartbeat`, {
+            const heartbeat = await axios.post(`${rmsServer}/api/rms/heartbeat`, {
                 params: {
                     id: serverRssId,
                     key: config.rssTargetRmsServerKeys[i]
