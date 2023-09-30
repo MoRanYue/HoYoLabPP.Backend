@@ -80,7 +80,7 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
         }
     }, config.rmsRequestRecordsClearTimeout)
 
-    router.post('/rms/requestMihoyo', async (req, res) => {
+    router.post('/api/rms/requestMihoyo', async (req, res) => {
         const info = await mihoyoRequest.resolveRequest(req.body)
 
         const targetUrl = new url.URL(info.url).hostname
@@ -119,7 +119,7 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
             await db.query(`UPDATE statistic SET "dayMihoyoApiRequestNumber" = (SELECT "dayMihoyoApiRequestNumber" + 1);`)
         }
     })
-    router.post('/rms/registerRss', async (req, res) => {
+    router.post('/api/rms/registerRss', async (req, res) => {
         if (config.rmsRegistrationKey == req.body.key) {
             console.log(`“${getClientIp(req)}”正在尝试注册RSS服务器`)
 
@@ -161,7 +161,7 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
             await apiResponse(res, ApiReturnCode.denied, '密钥不正确')
         }
     })
-    router.post('/rms/heartbeat', async (req, res) => {
+    router.post('/api/rms/heartbeat', async (req, res) => {
         const rssId = <string>req.query.id
 
         if (config.rmsRegistrationKey == req.query.key && Object.keys(registeredRss).includes(rssId)) {
@@ -176,11 +176,11 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
     })
 
     // 统计信息
-    router.post('/rms/statistic', async (req, res) => {
+    router.post('/api/rms/statistic', async (req, res) => {
         const statistic = (await db.query(`SELECT * FROM statistic;`)).rows[0]
         res.end(await apiResponse(res, undefined, undefined, statistic))
     })
-    router.post('/rms/statistic/rss/online', async (req, res) => {
+    router.post('/api/rms/statistic/rss/online', async (req, res) => {
         res.end(await apiResponse(res, undefined, undefined, {
             onlineRssServers: Object.keys(registeredRss).length
         }))
@@ -253,7 +253,7 @@ if ((config.serverType == 'rss' || config.serverType == 'hybrid') && config.rssA
         }
     }, config.rssheartbeatInterval)
 
-    router.post('/rss/requestMihoyo', async (req, res) => {
+    router.post('/api/rss/requestMihoyo', async (req, res) => {
         const info = await mihoyoRequest.resolveRequest(req.body)
         try {
             const result = await axios.request({
@@ -273,7 +273,7 @@ if ((config.serverType == 'rss' || config.serverType == 'hybrid') && config.rssA
         }
     })
 
-    router.post('/rss/ping', async (req, res) => {
+    router.post('/api/rss/ping', async (req, res) => {
         await apiResponse(res, ApiReturnCode.success)
     })
 
