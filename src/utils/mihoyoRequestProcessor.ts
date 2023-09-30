@@ -101,7 +101,7 @@ const urlConstants = {
   appMihoyo: 'https://app.mihoyo.com/'
 }
 export async function getReferer(target: string) {
-  const hostname = url.parse(target, false).hostname
+  const hostname = new url.URL(target).hostname
 
   switch (hostname?.toLowerCase()) {
     // case 'bbs-api.miyoushe.com':
@@ -136,7 +136,7 @@ export async function constructHeaders(info: MihoyoRequestInfo) {
   headers.Host = url.parse(info.url, false).hostname
   headers['User-Agent'] = `Mozilla/5.0 (Linux; Android ${androidVersion}; ${mobile} Build/TKQ1.220829.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/108.0.5359.128 Mobile Safari/537.36 miHoYoBBS/${config.likeUsingHoyolabVersion}`
   if (!headers.Origin) {
-    headers.Origin = await getReferer(headers.Host)
+    headers.Origin = await getReferer(info.url)
   }
   if (!headers.Referer) {
     headers.Referer = headers.Origin
@@ -151,8 +151,6 @@ export async function constructHeaders(info: MihoyoRequestInfo) {
   if (info.cookies) {
     headers.Cookie = dictToCookie(info.cookies)
   }
-
-  console.log(headers)
 
   return headers
 }

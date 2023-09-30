@@ -7,6 +7,7 @@ import { apiResponse } from "../utils/apiResponseConstructor";
 import { ApiReturnCode } from "../constants/EApiReturnCode";
 import config from "../config/config";
 import { ServerType } from "../constants/EServerType";
+import db from "../models/database";
 import { HttpRequestMethod } from "src/constants/EHttpRequestMethod";
 import { MihoyoRequestInfo } from "src/constants/IMihoyoRequestInfo";
 
@@ -99,16 +100,24 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
             }
         }
 
+        let result = ''
         if ([Infinity, 0].includes(leastRequestNumber) || !selectedRssServer) {
             const rssId = randomChoice(Object.keys(registeredRss))
 
-            const result = await sendJobToRss(req.body, targetUrl, cl, rssId)
+            result = await sendJobToRss(req.body, targetUrl, cl, rssId)
             res.end(result)
-            return
+        }
+        else {
+            result = await sendJobToRss(req.body, targetUrl, cl, selectedRssServer)
+            res.end(result)
         }
 
-        const result = await sendJobToRss(req.body, targetUrl, cl, selectedRssServer)
-        res.end(result)
+        const content = JSON.parse(result)
+        if (content.retcode == ApiReturnCode.success) {
+            await db.query(`UPDATE statistic SET "totalMihoyoApiRequestNumber" = (SELECT "totalMihoyoApiRequestNumber" + 1);`)
+            await db.query(`UPDATE statistic SET "monthMihoyoApiRequestNumber" = (SELECT "monthMihoyoApiRequestNumber" + 1);`)
+            await db.query(`UPDATE statistic SET "dayMihoyoApiRequestNumber" = (SELECT "dayMihoyoApiRequestNumber" + 1);`)
+        }
     })
     router.post('/rms/registerRss', async (req, res) => {
         if (config.rmsRegistrationKey == req.body.key) {
@@ -152,7 +161,7 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
             await apiResponse(res, ApiReturnCode.denied, '密钥不正确')
         }
     })
-    router.get('/rms/heartbeat', async (req, res) => {
+    router.post('/rms/heartbeat', async (req, res) => {
         const rssId = <string>req.query.id
 
         if (config.rmsRegistrationKey == req.query.key && Object.keys(registeredRss).includes(rssId)) {
@@ -167,11 +176,14 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
     })
 
     // 统计信息
-    router.get('/statistic', async (req, res) => {
-
+    router.post('/rms/statistic', async (req, res) => {
+        const statistic = (await db.query(`SELECT * FROM statistic;`)).rows[0]
+        res.end(await apiResponse(res, undefined, undefined, statistic))
     })
-    router.get('/statistic/rss/online', async (req, res) => {
-
+    router.post('/rms/statistic/rss/online', async (req, res) => {
+        res.end(await apiResponse(res, undefined, undefined, {
+            onlineRssServers: Object.keys(registeredRss).length
+        }))
     })
 
     console.log('已开启RMS服务器')
@@ -179,12 +191,13 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
 
 // 请求发送服务器（Request Sender Server，RSS）
 let serverRssId: string | undefined = undefined
-if (config.serverType == 'rss' || config.serverType == 'hybrid') {
+if ((config.serverType == 'rss' || config.serverType == 'hybrid') && config.rssAddress) {
+    const address = new url.URL(config.rssAddress)
     async function registerRssServer(rmsServer: string, key: string) {
         const res = await axios.post(`${rmsServer}/rms/registerRss`, {
             protocol: address.protocol,
             address: address.hostname,
-            port: parseInt(address.port || '80'),
+            port: parseInt(address.port),
             serverType: config.serverType,
             name: config.rssName || undefined,
             key
@@ -202,7 +215,6 @@ if (config.serverType == 'rss' || config.serverType == 'hybrid') {
     if (!config.rssAddress) {
         throw new Error("未配置RSS服务器地址，无法开启RSS服务器");
     }
-    const address = new url.URL(config.rssAddress)
     config.rssTargetRmsServers.forEach(async (rmsServer, i) => {
         if (!rmsServer.trim() || /127\.0\.0\.\d+|localhost|::\d+/.test(rmsServer)) {
             return
@@ -221,7 +233,7 @@ if (config.serverType == 'rss' || config.serverType == 'hybrid') {
     }
     setInterval(async () => {
         config.rssTargetRmsServers.forEach(async (rmsServer, i) => {
-            const heartbeat = await axios.get(`${rmsServer}/rms/heartbeat`, {
+            const heartbeat = await axios.post(`${rmsServer}/rms/heartbeat`, {
                 params: {
                     id: serverRssId,
                     key: config.rssTargetRmsServerKeys[i]
@@ -234,6 +246,11 @@ if (config.serverType == 'rss' || config.serverType == 'hybrid') {
                 await registerRssServer(rmsServer, config.rssTargetRmsServerKeys[i])
             }
         })
+
+        if (config.rssTargetLocalRmsServer && config.serverType == 'hybrid') {
+            const addr = `http://127.0.0.1:${config.port}`
+            await registerRssServer(addr, config.rmsRegistrationKey)
+        }
     }, config.rssheartbeatInterval)
 
     router.post('/rss/requestMihoyo', async (req, res) => {

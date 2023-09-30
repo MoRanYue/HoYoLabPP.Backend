@@ -14,4 +14,9 @@ export default {
     rmsHeartbeatTimeout: parseInt(process.env.RMS_HEARTBEAT_TIMEOUT ?? '180') * 1000,
     rmsRegistrationKey: process.env.RMS_REGISTRATION_KEY ?? 'HOYOLABPP',
     rmsRequestRecordsClearTimeout: parseInt(process.env.RMS_REQUEST_RECORDS_CLEAR_TIMEOUT ?? '3') * 1000,
+    dbHost: process.env.DB_HOST ?? '127.0.0.1',
+    dbPort: parseInt(process.env.DB_PORT ?? '5432'),
+    dbName: process.env.DB_NAME,
+    dbUser: process.env.DB_USER,
+    dbPassword: process.env.DB_PASSWORD,
 }
