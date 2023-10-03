@@ -14,9 +14,13 @@ import { MihoyoRequestInfo } from "src/constants/IMihoyoRequestInfo";
 const router = Router({})
 
 router.use(async (req, res, next) => {
-    req.query = url.parse(req.url, true).query
+    const ip = getClientIp(req)
 
-    // console.log(`${req.method}请求：${getClientIp(req)}\n数据：${JSON.stringify(req.query)}`)
+    if (ip.includes('127.0.0.1') || ip.includes('localhost') || ip.includes('::1')) {
+        return next()
+    }
+
+    console.log(`接收到“${ip}”连接：${req.url}`)
 
     next()
 })
@@ -162,9 +166,9 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
         }
     })
     router.post('/api/rms/heartbeat', async (req, res) => {
-        const rssId = <string>req.query.id
+        const rssId = <string>req.body.id
 
-        if (config.rmsRegistrationKey == req.query.key && Object.keys(registeredRss).includes(rssId)) {
+        if (config.rmsRegistrationKey == req.body.key && Object.keys(registeredRss).includes(rssId)) {
             registeredRss[rssId].lastHeartbeatTime = currentTimestamp()
             await apiResponse(res, undefined, undefined, {
                 id: rssId
@@ -190,7 +194,7 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
 }
 
 // 请求发送服务器（Request Sender Server，RSS）
-let serverRssId: string | undefined = undefined
+const serverRssIds: Record<string, string> = {}
 if ((config.serverType == 'rss' || config.serverType == 'hybrid') && config.rssAddress) {
     const address = new url.URL(config.rssAddress)
     async function registerRssServer(rmsServer: string, key: string) {
@@ -204,8 +208,8 @@ if ((config.serverType == 'rss' || config.serverType == 'hybrid') && config.rssA
         })
 
         if (res.data.retcode == ApiReturnCode.success) {
-            serverRssId = res.data.data.id
-            console.log(`成功在RMS服务器“${rmsServer}”上注册RSS服务器，分配到ID：${serverRssId}`)
+            serverRssIds[rmsServer] = res.data.data.id
+            console.log(`成功在RMS服务器“${rmsServer}”上注册RSS服务器，分配到ID：${serverRssIds[rmsServer]}`)
         }
         else {
             console.error(`在RMS服务器“${rmsServer}”上注册RSS服务器失败，原因：${res.data.retcode}：${res.data.message}`)
@@ -233,11 +237,13 @@ if ((config.serverType == 'rss' || config.serverType == 'hybrid') && config.rssA
     }
     setInterval(async () => {
         config.rssTargetRmsServers.forEach(async (rmsServer, i) => {
+            if (!rmsServer.trim() || /127\.0\.0\.\d+|localhost|::\d+/.test(rmsServer)) {
+                return
+            }
+
             const heartbeat = await axios.post(`${rmsServer}/api/rms/heartbeat`, {
-                params: {
-                    id: serverRssId,
-                    key: config.rssTargetRmsServerKeys[i]
-                }
+                id: serverRssIds[rmsServer],
+                key: config.rmsRegistrationKey
             })
 
             if (heartbeat.data.retcode != ApiReturnCode.success) {
@@ -249,7 +255,18 @@ if ((config.serverType == 'rss' || config.serverType == 'hybrid') && config.rssA
 
         if (config.rssTargetLocalRmsServer && config.serverType == 'hybrid') {
             const addr = `http://127.0.0.1:${config.port}`
-            await registerRssServer(addr, config.rmsRegistrationKey)
+            
+            const heartbeat = await axios.post(`${addr}/api/rms/heartbeat`, {
+                id: serverRssIds[addr],
+                key: config.rmsRegistrationKey
+            })
+
+            if (heartbeat.data.retcode != ApiReturnCode.success) {
+                // console.log(`向RMS服务器“${addr}”发送心跳包时失败，原因：${heartbeat.data.retcode}：${heartbeat.data.message}`)
+                console.warn(`向RMS服务器“${addr}”发送心跳包时失败，原因：${heartbeat.data.retcode}：${heartbeat.data.message}`)
+
+                await registerRssServer(addr, config.rmsRegistrationKey)
+            }
         }
     }, config.rssheartbeatInterval)
 
