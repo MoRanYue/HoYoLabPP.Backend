@@ -168,7 +168,11 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
     router.post('/api/rms/heartbeat', async (req, res) => {
         const rssId = <string>req.body.id
 
-        if (config.rmsRegistrationKey == req.body.key && Object.keys(registeredRss).includes(rssId)) {
+        if (config.rmsRegistrationKey != req.body.key) {
+            return await apiResponse(res, ApiReturnCode.denied, '密钥不正确')
+        }
+
+        if (Object.keys(registeredRss).includes(rssId)) {
             registeredRss[rssId].lastHeartbeatTime = currentTimestamp()
             await apiResponse(res, undefined, undefined, {
                 id: rssId
@@ -216,9 +220,9 @@ if ((config.serverType == 'rss' || config.serverType == 'hybrid') && config.rssA
         }
     }
 
-    if (!config.rssAddress) {
-        throw new Error("未配置RSS服务器地址，无法开启RSS服务器");
-    }
+    // if (!config.rssAddress) {
+    //     throw new Error("未配置RSS服务器地址，无法开启RSS服务器");
+    // }
     config.rssTargetRmsServers.forEach(async (rmsServer, i) => {
         if (!rmsServer.trim() || /127\.0\.0\.\d+|localhost|::\d+/.test(rmsServer)) {
             return
@@ -243,7 +247,7 @@ if ((config.serverType == 'rss' || config.serverType == 'hybrid') && config.rssA
 
             const heartbeat = await axios.post(`${rmsServer}/api/rms/heartbeat`, {
                 id: serverRssIds[rmsServer],
-                key: config.rmsRegistrationKey
+                key: config.rssTargetRmsServerKeys[i]
             })
 
             if (heartbeat.data.retcode != ApiReturnCode.success) {
