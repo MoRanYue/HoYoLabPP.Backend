@@ -105,6 +105,8 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
         }
 
         let result = ''
+        res.setHeader('Content-Type', 'application/json;charset=utf-8')
+        res.setHeader('Cache-Control', 'no-cache')
         if ([Infinity, 0].includes(leastRequestNumber) || !selectedRssServer) {
             const rssId = randomChoice(Object.keys(registeredRss))
 
