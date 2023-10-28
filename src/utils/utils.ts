@@ -1,5 +1,6 @@
 import type { Dict } from "src/constants/TDict"
 import { Request } from "express"
+import { AnyFunc } from "src/constants/TAnyFunc"
 
 export function getClientIp(req: Request): string {
   const ip: Dict = {
@@ -92,4 +93,15 @@ export function dictToCookie(cookies: Dict): string {
   }
 
   return cookie
+}
+
+export function encryptIpV4(ip: string) {
+  const segments = ip.split('.')
+  segments[2] = '***'
+  segments[3] = '***'
+  return segments.join('.')
+}
+
+export function isAsyncFunc(func: AnyFunc) {
+  return Object.prototype.toString.call(func).includes('AsyncFunction')
 }

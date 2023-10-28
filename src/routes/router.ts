@@ -2,7 +2,7 @@ import { Router } from "express";
 import url from 'url'
 import axios from 'axios'
 import * as mihoyoRequest from '../utils/mihoyoRequestProcessor'
-import { currentTimestamp, getClientIp, randomChoice, randomUuid4 } from "../utils/utils";
+import { currentTimestamp, encryptIpV4, getClientIp, randomChoice, randomUuid4 } from "../utils/utils";
 import { apiResponse } from "../utils/apiResponseConstructor";
 import { ApiReturnCode } from "../constants/EApiReturnCode";
 import config from "../config/config";
@@ -10,6 +10,7 @@ import { ServerType } from "../constants/EServerType";
 import db from "../models/database";
 import { HttpRequestMethod } from "src/constants/EHttpRequestMethod";
 import { MihoyoRequestInfo } from "src/constants/IMihoyoRequestInfo";
+import Cache from "../utils/cache";
 
 const router = Router({})
 
@@ -28,17 +29,20 @@ router.use(async (req, res, next) => {
 // 请求分配服务器（Request Matcher Server，RMS）
 const registeredRss: Record<string, {
     name?: string
-    protocol?: 'http:' | 'https:'
+    protocol: 'http:' | 'https:'
     serverType: ServerType
     address: string
     port: number
     lastHeartbeatTime: number
+    registeringTime: number
     requests: Record<string, {
         client: string[]
         number: number
     }>
 }> = {}
+const cache = new Cache()
 if (config.serverType == 'rms' || config.serverType == 'hybrid') {
+    cache.register('statistic', async () => (await db.query(`SELECT * FROM statistic;`)).rows[0], 180)
     async function sendJobToRss(requestInfo: string, targetUrl: string, client: string, rssId: string) {
         const rss = registeredRss[rssId]
         const rssServer = `${rss.protocol}//${rss.address}:${rss.port}`
@@ -147,13 +151,15 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
                 return await apiResponse(res, ApiReturnCode.failure, '无法连接')
             }
             
+            const currentTime = currentTimestamp()
             registeredRss[rssId] = {
                 address,
                 port,
                 name,
                 protocol,
                 serverType,
-                lastHeartbeatTime: currentTimestamp(),
+                lastHeartbeatTime: currentTime,
+                registeringTime: currentTime,
                 requests: {}
             }
 
@@ -187,12 +193,28 @@ if (config.serverType == 'rms' || config.serverType == 'hybrid') {
 
     // 统计信息
     router.post('/api/rms/statistic', async (req, res) => {
-        const statistic = (await db.query(`SELECT * FROM statistic;`)).rows[0]
-        res.end(await apiResponse(res, undefined, undefined, statistic))
+        res.end(await apiResponse(res, undefined, undefined, await cache.get('statistic')))
     })
     router.post('/api/rms/statistic/rss/online', async (req, res) => {
+        const onlineRssServers: Record<string, {
+            name: string
+            protocol: string
+            registeringTime: number
+        }> = {}
+        for (const id in registeredRss) {
+            if (Object.prototype.hasOwnProperty.call(registeredRss, id)) {
+                const rssServer = registeredRss[id];
+                
+                onlineRssServers[id] = {
+                    name: rssServer.name ?? encryptIpV4(rssServer.address),
+                    protocol: rssServer.protocol,
+                    registeringTime: rssServer.registeringTime
+                }
+            }
+        }
+
         res.end(await apiResponse(res, undefined, undefined, {
-            onlineRssServers: Object.keys(registeredRss).length
+            onlineRssServers
         }))
     })
 
@@ -268,7 +290,6 @@ if ((config.serverType == 'rss' || config.serverType == 'hybrid') && config.rssA
             })
 
             if (heartbeat.data.retcode != ApiReturnCode.success) {
-                // console.log(`向RMS服务器“${addr}”发送心跳包时失败，原因：${heartbeat.data.retcode}：${heartbeat.data.message}`)
                 console.warn(`向RMS服务器“${addr}”发送心跳包时失败，原因：${heartbeat.data.retcode}：${heartbeat.data.message}`)
 
                 await registerRssServer(addr, config.rmsRegistrationKey)
